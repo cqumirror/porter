@@ -3,9 +3,15 @@ import tornado.web
 import tornado.httpserver
 import tornado.httpclient
 import tornado.gen
+import tornado.options
 import tornado.escape
 import hmac
 import hashlib
+
+try:
+    import settings
+except ImportError:
+    import settings_local as settings
 
 
 class BaseHandler(tornado.web.RequestHandler):
@@ -15,8 +21,10 @@ class BaseHandler(tornado.web.RequestHandler):
         return self.settings[name] if has_name else default
 
     def headers_get(self, name, default=None):
-        has_name = name in self.request.headers.keys()
-        return self.request.headers[name] if has_name else default
+        try:
+            return self.request.headers[name]
+        except KeyError:
+            return default
 
     def _create_signature(self, secret, *parts):
         hash_fn = hmac.new(secret, digestmod=hashlib.sha256)
@@ -65,7 +73,7 @@ class MirrorsHandler(BaseHandler):
         data_fetched = yield self.fetch_data(mirrors_data_url)
         mirrors_json = tornado.escape.json_decode(data_fetched)
         # post to capacitor
-        post_request_url = "http://localhost:5000/api/mirrors"
+        post_request_url = "http://dev.mirrors.lanunion.org/api/mirrors"
         post_request_headers = {
             "Access-Token": self.settings_get("access_token"),
             "Content-Type": "application/json"
@@ -91,16 +99,16 @@ def make_app():
     handlers = [
         ("/api/p/mirrors", MirrorsHandler),
         ("/api/p/notices", NoticesHandler)]
-    settings = dict(
-        secret="null",
-        access_token="null",
-        debug=True,)
+    _settings = dict(
+        secret=settings.SECRET_KEY,
+        access_token=settings.ACCESS_TOKEN,
+        debug=settings.DEBUG,)
 
-    return tornado.web.Application(handlers, **settings)
+    return tornado.web.Application(handlers, **_settings)
 
 
 if __name__ == "__main__":
     app = make_app()
     http_server = tornado.httpserver.HTTPServer(app)
-    http_server.listen(8888, address="127.0.0.1")
+    http_server.listen(settings.PORT, address=settings.HOST)
     tornado.ioloop.IOLoop.current().start()
